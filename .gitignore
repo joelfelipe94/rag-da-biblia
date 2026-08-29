@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# TypeScript artifacts gerados ao compilar jest.config.ts na raiz
+/jest.config.js
+/jest.config.d.ts
+/jest.config.d.ts.map
+
+# Cobertura de testes
+coverage/
+
+# Bancos SQLite: as traduções e os bancos indexados não são versionados
+# (ver README — baixe as traduções de https://github.com/damarals/biblias)
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+data/*.db
+!data/.gitkeep
+
+# Variáveis de ambiente
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Sistema operacional / editores
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
