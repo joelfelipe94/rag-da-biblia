@@ -1,0 +1,42 @@
+{
+  "name": "ai-parte-2-rag",
+  "version": "1.0.0",
+  "description": "This is a RAG example. It retrieves bible chapters based on the user query to feed them to an llm that will produce a response quoting the bible.",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "bin": {
+    "token-counter": "./dist/tokenCounter.js",
+    "preprocessor": "./dist/preprocessor.js",
+    "search-bible": "./dist/searchBible.js"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.json",
+    "preprocessor": "npm run build && node ./dist/preprocessor.js",
+    "searchBible": "npm run build && node ./dist/searchBible.js",
+    "tokenCounter": "npm run build && node ./dist/tokenCounter.js",
+    "test": "npm run build && node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "style:check": "eslint .",
+    "style:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "@lmstudio/sdk": "^1.5.0",
+    "better-sqlite3": "12.11.1",
+    "sqlite-vec": "^0.1.9",
+    "yargs": "18.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/jest": "^30.0.0",
+    "@types/node": "26.1.1",
+    "@types/yargs": "^17.0.33",
+    "eslint": "^9.39.5",
+    "globals": "^17.11.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "tsx": "^4.23.0",
+    "typescript-eslint": "^8.68.0"
+  }
+}
