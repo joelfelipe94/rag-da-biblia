@@ -2,8 +2,10 @@
 
 import { hideBin } from 'yargs/helpers';
 import yargs from 'yargs';
-import { LMStudioClient, type LLM } from '@lmstudio/sdk';
+import { LMStudioClient } from '@lmstudio/sdk';
 import Database from 'better-sqlite3';
+import { carregarSomenteModeloAlvo } from './helpers/search/carregarSomenteModeloAlvo.js';
+import { MODELO_ALVO } from './helpers/modelos.js';
 
 /**
  * Executa o fluxo principal do contador de tokens.
@@ -13,7 +15,6 @@ import Database from 'better-sqlite3';
  */
 async function main(argv: string[]): Promise<void> {
   const lmStudioClient = new LMStudioClient();
-  const modeloAlvo = 'google/gemma-4-12b-qat';
 
   const argumentos = await yargs(hideBin(argv))
     .scriptName('token-counter')
@@ -37,7 +38,7 @@ async function main(argv: string[]): Promise<void> {
 
   const n = Number(argumentos.n);
 
-  const modelo = await carregarSomenteModeloAlvo(lmStudioClient, modeloAlvo);
+  const modelo = await carregarSomenteModeloAlvo(lmStudioClient, MODELO_ALVO);
 
   console.log(`Identificador do modelo: ${modelo.identifier}`);
 
@@ -102,25 +103,6 @@ async function topNContagemDeTokens(contagensDeTokens: number[], n: number): Pro
   return topN;
 }
 
-/**
- * Mantém somente o modelo alvo carregado no LM Studio.
- *
- * @param cliente Cliente do LM Studio usado para listar, descarregar e carregar modelos.
- * @param modeloAlvo Chave do modelo que deve permanecer carregado.
- * @returns Instância do modelo alvo carregado.
- */
-async function carregarSomenteModeloAlvo(cliente: LMStudioClient, modeloAlvo: string): Promise<LLM> {
-  const modelosCarregados = await cliente.llm.listLoaded();
-  for (const modeloCarregado of modelosCarregados) {
-    if (modeloCarregado.modelKey !== modeloAlvo) {
-      await cliente.llm.unload(modeloCarregado.identifier);
-    }
-  }
-  const modelo =
-    modelosCarregados.find((modeloCarregado) => modeloCarregado.modelKey === modeloAlvo) ??
-    (await cliente.llm.load(modeloAlvo));
-  return modelo;
-}
 
 main(process.argv).catch((error) => {
   console.error(error);

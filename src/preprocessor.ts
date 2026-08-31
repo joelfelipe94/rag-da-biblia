@@ -2,11 +2,15 @@
 
 import { hideBin } from 'yargs/helpers';
 import yargs from 'yargs';
-import { LMStudioClient, type EmbeddingModel, type LLM } from '@lmstudio/sdk';
+import { LMStudioClient, type EmbeddingModel } from '@lmstudio/sdk';
 import { AutoTokenizer } from '@huggingface/transformers';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
 import { dividirEmChunks } from './helpers/dividirEmChunks.js';
+import { carregarSomenteModeloAlvo } from './helpers/search/carregarSomenteModeloAlvo.js';
+import { carregarSomenteModeloAlvoEmbedding } from './helpers/search/carregarSomenteModeloAlvoEmbedding.js';
+import { serializarEmbeddingParaBuffer } from './helpers/serializarEmbeddingParaBuffer.js';
+import { MODELO_ALVO, MODELO_EMBEDDING_ALVO } from './helpers/modelos.js';
 
 
 function carregarExtensaoSqliteVec(banco: Database.Database): void {
@@ -28,11 +32,9 @@ function carregarExtensaoSqliteVec(banco: Database.Database): void {
  */
 async function main(argv: string[]): Promise<void> {
   const lmStudioClient = new LMStudioClient();
-  const modeloAlvo = 'google/gemma-4-12b-qat';
-  const modeloEmbeddingAlvo = 'text-embedding-multilingual-e5-large-instruct';
   const MAXIMO_TOKENS_POR_CHUNK = 900;
   // Remove sufixos de quantização e GGUF para obter o tokenizer correto
-  const modeloAlvoTokenizer = modeloAlvo
+  const modeloAlvoTokenizer = MODELO_ALVO
     .replace(/-qat$/i, '')
     .replace(/-gguf$/i, '');
 
@@ -58,12 +60,12 @@ async function main(argv: string[]): Promise<void> {
   const inputDb = argumentos.input as string;
   const outputDb = argumentos.output as string;
 
-  const modelo = await carregarSomenteModeloAlvo(lmStudioClient, modeloAlvo);
+  const modelo = await carregarSomenteModeloAlvo(lmStudioClient, MODELO_ALVO);
   console.log(`Identificador do modelo: ${modelo.identifier}\n`);
 
-  const modeloEmbedding = await carregarModeloEmbedding(
+  const modeloEmbedding = await carregarSomenteModeloAlvoEmbedding(
     lmStudioClient,
-    modeloEmbeddingAlvo,
+    MODELO_EMBEDDING_ALVO,
   );
   console.log(`Modelo de embedding carregado: ${modeloEmbedding.identifier}\n`);
 
@@ -286,7 +288,7 @@ function inserirChunksNasTabelas(
           );
 
           // Insere embedding no vec0 primeiro (sem rowid, deixa gerar)
-          const embeddingBuffer = serializarEmbeddingParaVec(
+          const embeddingBuffer = serializarEmbeddingParaBuffer(
             embeddingGerado.embedding,
           );
 
@@ -316,55 +318,6 @@ function inserirChunksNasTabelas(
       banco.close();
     }
   })();
-}
-
-function serializarEmbeddingParaVec(embedding: number[]): Buffer {
-  const float32 = new Float32Array(embedding);
-  return Buffer.from(float32.buffer, float32.byteOffset, float32.byteLength);
-}
-
-/**
- * Mantém somente o modelo alvo carregado no LM Studio.
- *
- * @param cliente Cliente do LM Studio usado para listar, descarregar e carregar modelos.
- * @param modeloAlvo Chave do modelo que deve permanecer carregado.
- * @returns Instância do modelo alvo carregado.
- */
-async function carregarSomenteModeloAlvo(
-  cliente: LMStudioClient,
-  modeloAlvo: string,
-): Promise<LLM> {
-  const modelosCarregados = await cliente.llm.listLoaded();
-  for (const modeloCarregado of modelosCarregados) {
-    if (modeloCarregado.modelKey !== modeloAlvo) {
-      await cliente.llm.unload(modeloCarregado.identifier);
-    }
-  }
-  const modelo =
-    modelosCarregados.find(
-      (modeloCarregado) => modeloCarregado.modelKey === modeloAlvo,
-    ) ?? (await cliente.llm.load(modeloAlvo));
-  return modelo;
-}
-
-async function carregarModeloEmbedding(
-  cliente: LMStudioClient,
-  modeloEmbeddingAlvo: string,
-): Promise<EmbeddingModel> {
-  const modelosCarregados = await cliente.embedding.listLoaded();
-
-  for (const modeloCarregado of modelosCarregados) {
-    if (modeloCarregado.modelKey !== modeloEmbeddingAlvo) {
-      await cliente.embedding.unload(modeloCarregado.identifier);
-    }
-  }
-
-  const modeloEmbedding =
-    modelosCarregados.find(
-      (modeloCarregado) => modeloCarregado.modelKey === modeloEmbeddingAlvo,
-    ) ?? (await cliente.embedding.load(modeloEmbeddingAlvo));
-
-  return modeloEmbedding;
 }
 
 main(process.argv).catch((error) => {

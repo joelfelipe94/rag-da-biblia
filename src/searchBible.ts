@@ -4,8 +4,6 @@ import { Chat, LMStudioClient, type LLM } from '@lmstudio/sdk';
 
 import type {
   ConsultaExpandida,
-  ResultadoFts,
-  ResultadoVetorial,
   ResultadoFinal,
 } from './types.js';
 import { carregarSomenteModeloAlvo } from './helpers/search/carregarSomenteModeloAlvo.js';
@@ -17,16 +15,12 @@ import { carregarParametrosDoComando } from './helpers/carregarParametrosDoComan
 import { buscarFts } from './helpers/consultasBanco/buscarFts.js';
 import { buscarVetorial } from './helpers/consultasBanco/buscarVetorial.js';
 import { imprimirCapitulosEncontrados } from './helpers/imprimirCapitulosEncontrados.js';
+import { renderizarMarkdownNoTerminal } from './helpers/renderizarMarkdownNoTerminal.js';
+import { fundirResultados } from './helpers/search/fundirResultados.js';
+import { MODELO_ALVO, MODELO_EMBEDDING_ALVO } from './helpers/modelos.js';
 
 async function main(argv: string[]): Promise<void> {
   const lmStudioClient = new LMStudioClient();
-  // Modelo utilizado para expandir a consulta do usuário (gerar consulta FTS, paráfrases e documento hipotético)
-  // e para gerar a resposta final com base nos documentos encontrados.
-  const modeloAlvo = 'google/gemma-4-12b-qat';
-
-  // Modelo utilizado para gerar embeddings para busca vetorial
-  const modeloEmbeddingAlvo = 'text-embedding-multilingual-e5-large-instruct';
-
   const {
     consultaOriginal,
     pularHyde,
@@ -39,11 +33,11 @@ async function main(argv: string[]): Promise<void> {
   } = await carregarParametrosDoComando(argv);
 
 
-  const modelo = await carregarSomenteModeloAlvo(lmStudioClient, modeloAlvo);
+  const modelo = await carregarSomenteModeloAlvo(lmStudioClient, MODELO_ALVO);
 
   const modeloEmbedding = await carregarSomenteModeloAlvoEmbedding(
     lmStudioClient,
-    modeloEmbeddingAlvo
+    MODELO_EMBEDDING_ALVO
   );
 
   const consultaExpandida = await produzirConsultaExpandida(
@@ -90,7 +84,7 @@ async function main(argv: string[]): Promise<void> {
       capitulosEncontrados,
     );
   console.log('\nResposta com base na biblia:');
-  console.log(respostaComBaseNosDocumentos);
+  console.log(renderizarMarkdownNoTerminal(respostaComBaseNosDocumentos));
 }
 
 
@@ -112,8 +106,22 @@ async function produzirRespostaComBaseNosDocumentos(
 
   console.log('\nGerando resposta com base nos documentos encontrados:');
   const predicao = modelo.respond(chat, { preset: 'no-thinking' });
+  // Renderiza o Markdown por linha completa: `**` e o bullet `*` só podem ser
+  // resolvidos depois que a linha inteira chegou do streaming.
+  let bufferLinha = '';
   for await (const { content } of predicao) {
-    process.stdout.write(content);
+    bufferLinha += content;
+    let quebra = bufferLinha.indexOf('\n');
+    while (quebra !== -1) {
+      process.stdout.write(
+        `${renderizarMarkdownNoTerminal(bufferLinha.slice(0, quebra))}\n`,
+      );
+      bufferLinha = bufferLinha.slice(quebra + 1);
+      quebra = bufferLinha.indexOf('\n');
+    }
+  }
+  if (bufferLinha.length > 0) {
+    process.stdout.write(renderizarMarkdownNoTerminal(bufferLinha));
   }
   process.stdout.write('\n');
   const resposta = await predicao;
@@ -155,73 +163,7 @@ async function produzirConsultaExpandida(
   return consultasExpandidas;
 }
 
-export function serializarEmbeddingParaVec(embedding: number[]): Buffer {
-  const float32 = new Float32Array(embedding);
-  return Buffer.from(float32.buffer, float32.byteOffset, float32.byteLength);
-}
 
-function fundirResultados(
-  resultadosFts: ResultadoFts[],
-  resultadosVetoriais: ResultadoVetorial[],
-  topK: number,
-  pesoFts: number,
-  pesoVetorial: number,
-): ResultadoFinal[] {
-  const mapaFinal = new Map<string, ResultadoFinal>();
-  const constanteRrf = 60;
-
-  for (const [indice, resultadoFts] of resultadosFts.entries()) {
-    const scoreRrf = pesoFts * (1 / (constanteRrf + indice + 1));
-    const chave = montarChaveResultado(resultadoFts);
-    const existente = mapaFinal.get(chave);
-
-    if (existente) {
-      existente.scoreFinal += scoreRrf;
-      existente.scoreFts = resultadoFts.scoreFts;
-      continue;
-    }
-
-    mapaFinal.set(chave, {
-      livro: resultadoFts.livro,
-      numeroLivro: resultadoFts.numeroLivro,
-      indiceCapitulo: 0,
-      indiceChunk: resultadoFts.indiceChunk,
-      numeroCapitulo: resultadoFts.numeroCapitulo,
-      testamento: resultadoFts.testamento,
-      texto: resultadoFts.texto,
-      scoreFinal: scoreRrf,
-      scoreFts: resultadoFts.scoreFts,
-    });
-  }
-
-  for (const [indice, resultadoVetorial] of resultadosVetoriais.entries()) {
-    const scoreRrf = pesoVetorial * (1 / (constanteRrf + indice + 1));
-    const chave = montarChaveResultado(resultadoVetorial);
-    const existente = mapaFinal.get(chave);
-
-    if (existente) {
-      existente.scoreFinal += scoreRrf;
-      existente.scoreVetorial = resultadoVetorial.scoreVetorial;
-      continue;
-    }
-
-    mapaFinal.set(chave, {
-      indiceChunk: resultadoVetorial.indiceChunk,
-      livro: resultadoVetorial.livro,
-      numeroLivro: resultadoVetorial.numeroLivro,
-      indiceCapitulo: 0,
-      numeroCapitulo: resultadoVetorial.numeroCapitulo,
-      testamento: resultadoVetorial.testamento,
-      texto: resultadoVetorial.texto,
-      scoreFinal: scoreRrf,
-      scoreVetorial: resultadoVetorial.scoreVetorial,
-    });
-  }
-
-  return Array.from(mapaFinal.values())
-    .sort((a, b) => b.scoreFinal - a.scoreFinal)
-    .slice(0, topK);
-}
 
 export function resumirTexto(texto: string, limite: number): string {
   const normalizado = texto.replace(/\s+/g, ' ').trim();

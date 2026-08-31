@@ -33,6 +33,7 @@ export async function produzirParafraseParaBuscaEmbedding(
   for (let tentativa = 1; tentativa <= 3; tentativa++) {
     try {
       resultado = await processarParafrase(predicao);
+      break; // Sai do loop se a resposta for válida
     } catch (error) {
       if (tentativa < 3) {
         console.warn(
@@ -58,9 +59,12 @@ async function processarParafrase(predicao: OngoingPrediction<unknown>): Promise
     process.stdout.write(content);
     const [antesDaQuebraDeLinha, ...depoisDaQuebraDeLinha] = content.split('\n');
     tamanhoRespostaParcial += antesDaQuebraDeLinha?.length ?? 0;
-    if (tamanhoRespostaParcial > 300) {
+    // Verifica se a linha atual excede 500 caracteres ou se há mais de 3 linhas
+    // O prompt do sistema diz para o modelo produzir no maximo 300 caracteres, mas o modelo pode produzir mais, então é necessário verificar.
+    // A margem de 200 caracteres se deve ao fato de que o modelo não é bom em contagem de caracteres, então é melhor ser mais permissivo.
+    if (tamanhoRespostaParcial > 500) {
       throw new Error(
-        'O modelo produziu uma linha de paráfrase com mais de 300 caracteres, o que não é permitido.',
+        'O modelo produziu uma linha de paráfrase com mais de 500 caracteres, o que não é permitido.',
       );
     }
     if (depoisDaQuebraDeLinha.length > 0) {

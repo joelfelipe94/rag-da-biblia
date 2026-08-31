@@ -1,8 +1,9 @@
 import type { EmbeddingModel } from '@lmstudio/sdk';
 import Database from 'better-sqlite3';
 import * as sqliteVec from 'sqlite-vec';
-import { serializarEmbeddingParaVec, montarChaveResultado } from '../../searchBible.js';
 import type { ResultadoVetorial } from '../../types.js';
+import { serializarEmbeddingParaBuffer } from '../serializarEmbeddingParaBuffer.js';
+import { montarChaveResultado } from '../montarChaveResultado.js';
 
 /**
  * Executa busca vetorial KNN no SQLite (sqlite-vec) para uma ou mais consultas,
@@ -27,14 +28,15 @@ export async function buscarVetorial(
   caminhoDb: string,
   consultasVetoriais: string[],
   modeloEmbedding: EmbeddingModel,
-  limite: number): Promise<ResultadoVetorial[]> {
+  limite: number,
+): Promise<ResultadoVetorial[]> {
   if (consultasVetoriais.length === 0) {
     return [];
   }
 
   const respostasEmbedding = await modeloEmbedding.embed(consultasVetoriais);
   const embeddingConsultas = respostasEmbedding.map(
-    (resposta) => resposta.embedding
+    (resposta) => resposta.embedding,
   );
 
   const banco = new Database(caminhoDb, { readonly: true });
@@ -60,17 +62,15 @@ export async function buscarVetorial(
         tabela_embedding.texto
       FROM semantic_search
       join tabela_embedding ON semantic_search.rowid = tabela_embedding.rowid
-      
     `);
 
-    // Para cada consulta vetorial, faz busca KNN e acumula os melhores resultados
     const mapaResultados = new Map<
       string,
-      { resultado: ResultadoVetorial; melhorDistancia: number; }
+      { resultado: ResultadoVetorial; melhorDistancia: number }
     >();
 
     for (const vetorConsulta of embeddingConsultas) {
-      const embeddingBuffer = serializarEmbeddingParaVec(vetorConsulta);
+      const embeddingBuffer = serializarEmbeddingParaBuffer(vetorConsulta);
       const candidatos = consultaKnn.all(embeddingBuffer, limite) as Array<{
         distance: number;
         numeroCapitulo: number;
