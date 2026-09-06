@@ -7,9 +7,10 @@ import { PainelResposta } from './PainelResposta';
 type Props = {
   consulta: Consulta;
   aoAbrirTrecho: (trecho: TrechoDTO) => void;
+  aoApagar: (id: string) => void;
 };
 
-export function CartaoConsulta({ consulta, aoAbrirTrecho }: Props) {
+export function CartaoConsulta({ consulta, aoAbrirTrecho, aoApagar }: Props) {
   const carregandoTrechos =
     !consulta.concluida &&
     consulta.trechos.length === 0 &&
@@ -17,6 +18,17 @@ export function CartaoConsulta({ consulta, aoAbrirTrecho }: Props) {
 
   return (
     <article className="cartao">
+      {consulta.concluida && (
+        <button
+          type="button"
+          className="cartao__apagar"
+          onClick={() => aoApagar(consulta.id)}
+          aria-label="Apagar cartão"
+          title="Apagar cartão"
+        >
+          ×
+        </button>
+      )}
       <div className="cartao__pergunta">
         <span className="cartao__rotulo">Pergunta</span>
         <p>{consulta.pergunta}</p>

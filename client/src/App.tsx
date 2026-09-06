@@ -109,6 +109,10 @@ export function App() {
     [],
   );
 
+  const apagarConsulta = useCallback((id: string) => {
+    setConsultas((atuais) => atuais.filter((consulta) => consulta.id !== id));
+  }, []);
+
   const enviarConsulta = useCallback(
     (pergunta: string) => {
       const consulta = novaConsulta(pergunta);
@@ -157,6 +161,7 @@ export function App() {
             key={consulta.id}
             consulta={consulta}
             aoAbrirTrecho={setTrechoModal}
+            aoApagar={apagarConsulta}
           />
         ))}
       </main>

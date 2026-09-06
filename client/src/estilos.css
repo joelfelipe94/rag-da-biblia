@@ -193,11 +193,37 @@ body {
 }
 
 .cartao {
+  position: relative;
   background: var(--papel);
   border: 1px solid var(--linha);
   border-radius: var(--raio);
   box-shadow: var(--sombra);
   overflow: hidden;
+}
+
+.cartao__apagar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #e07a1f;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.cartao__apagar:hover {
+  background: rgba(224, 122, 31, 0.12);
 }
 
 .cartao__pergunta {
