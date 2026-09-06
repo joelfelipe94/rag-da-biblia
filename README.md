@@ -11,46 +11,51 @@ Todo o processamento (LLM, embeddings e contagem de tokens) roda através do
 ## Como funciona
 
 O fluxo tem duas etapas: um **pré-processamento** que transforma um SQLite bruto
-da Bíblia em um índice de busca, e a **busca** propriamente dita.
+da Bíblia em um SQLite com indices apropriados para busca, e a **busca** propriamente dita.
 
-```mermaid
-flowchart TD
-    A[SQLite bruto da Bíblia<br/>tabelas book / verse] -->|preprocessor| B[SQLite indexado<br/>tabela_fts + tabela_embedding + tabela_embedding_vec]
-    Q[Pergunta do usuário] -->|search-bible| C[Expansão da consulta<br/>consulta FTS5 + paráfrases + documento hipotético HyDE]
-    C --> D[Busca FTS5 BM25]
-    C --> E[Busca vetorial KNN<br/>sqlite-vec]
-    B --> D
-    B --> E
-    D --> F[Fusão ponderada RRF]
-    E --> F
-    F --> G[LLM local gera a resposta<br/>citando as referências]
-```
+![Fluxos](./imagens/fluxos.png)
 
 ### Pré-processamento (`preprocessor`)
 
-1. Lê os versículos do SQLite de entrada, agrupando-os por capítulo.
-2. Divide cada capítulo em _chunks_ de no máximo **900 tokens**, contados com o
-   tokenizer do modelo alvo (`@huggingface/transformers`). O corte é feito em
-   nível de linha e cada chunk recomeça com a última linha do chunk anterior,
-   garantindo _overlap_ de contexto.
-3. Gera o embedding de cada chunk com o modelo de embeddings.
-4. Grava tudo em três tabelas do SQLite de saída (veja
-   [Esquema do banco indexado](#esquema-do-banco-indexado)).
+O `preprocessor` lê os versículos do SQLite de entrada e os agrupa por capítulo.
+Cada capítulo é então dividido em _chunks_ de no máximo **900 tokens**, contados
+com o tokenizer do modelo alvo. O corte acontece em nível de linha, e cada chunk
+recomeça com a última linha do chunk anterior, o que garante _overlap_ de contexto entre trechos vizinhos.
 
-### Busca (`search-bible`)
+Em seguida, o embedding de cada chunk é gerado com o modelo de embeddings. Por
+fim, tudo é gravado em três tabelas do SQLite de saída (veja [Esquema do banco indexado](#esquema-do-banco-indexado)).
 
-1. **Expansão da consulta** com o LLM local:
-   - uma consulta `MATCH` válida para o FTS5 (validada contra o banco, com até 3
-     tentativas);
-   - até 3 paráfrases semânticas para a busca vetorial;
-   - um documento hipotético (HyDE) que "parece" o trecho procurado — pode ser
-     desligado com `--pular-hyde`.
-2. **Busca lexical** no FTS5, ordenada por BM25.
-3. **Busca vetorial** KNN com `sqlite-vec`, usando as paráfrases e o HyDE.
-4. **Fusão** dos dois rankings com _Reciprocal Rank Fusion_ ponderado
-   (`--peso-fts` / `--peso-vetorial`, constante `k = 60`).
-5. O LLM redige a resposta final apenas com base nos trechos recuperados,
-   citando as referências; se não encontrar, diz que não encontrou.
+### Busca (`search-bible` ou `server`)
+
+A busca começa com a **expansão da consulta** feita pelo LLM local, que transforma
+a pergunta do usuário em três insumos complementares. O primeiro é uma consulta
+`MATCH` válida para o FTS5: como a sintaxe do FTS5 é restrita e um operador mal
+formado quebra a query, ela é validada diretamente contra o banco e, se falhar, o
+LLM tem até 3 tentativas para produzir uma versão aceitável. O segundo insumo são
+até 3 paráfrases semânticas da pergunta, que ampliam a cobertura da busca
+vetorial ao reformular a intenção com outras palavras. O terceiro é um documento
+hipotético no estilo **HyDE** (_Hypothetical Document Embeddings_): um trecho que
+"parece" a passagem procurada e que, uma vez vetorizado, costuma cair mais perto
+dos chunks relevantes do que a pergunta crua. O HyDE pode ser desligado com
+`--pular-hyde`. Já que aumenta bastante o tempo de execução.
+
+Com esses insumos, o sistema roda duas buscas independentes. A **busca lexical**
+consulta o FTS5 com a query `MATCH` e ordena os resultados por **BM25**, favorecendo
+correspondências exatas de termos e nomes próprios. A **busca vetorial** faz uma
+consulta KNN (_k-nearest neighbors_) com `sqlite-vec`, comparando os embeddings
+das paráfrases e do HyDE com os embeddings dos chunks para encontrar trechos
+próximos em significado, mesmo sem palavras em comum.
+
+Os dois rankings são então combinados por **Reciprocal Rank Fusion (RRF)**
+ponderado: cada trecho recebe uma pontuação baseada na sua posição em cada lista
+(com a constante `k = 60`), e as contribuições lexical e vetorial entram com os
+pesos `--peso-fts` e `--peso-vetorial`. Isso produz uma lista única em que
+trechos bem colocados nas duas buscas sobem para o topo.
+
+Por fim, o LLM redige a resposta apenas com base nos trechos recuperados, citando
+as referências (testamento, livro, capítulo e versículo). Se os trechos não
+sustentarem uma resposta, ele diz explicitamente que não encontrou, em vez de
+completar com conhecimento próprio.
 
 ## Requisitos
 
@@ -83,10 +88,10 @@ Os comandos `npm run <script>` já executam `npm run build` antes de rodar.
 [`data/`](./data) fica vazio (a não ser pelos bancos que você mesmo gerar) e você
 precisa baixar o texto bíblico à parte.
 
-Use a coletânea de Bíblias em português de
-[**damarals/biblias**](https://github.com/damarals/biblias), que disponibiliza 18
+Use a coletânea de Bíblias em português de [**damarals/biblias**](https://github.com/damarals/biblias), que disponibiliza 18
 traduções em SQLite na última _release_ do projeto. Baixe o `.sqlite` da tradução
 desejada e coloque-o em `data/` (ex.: `data/NAA.sqlite`).
+O autor do presente repositório recomenda a versão **Nova Almeida Atualizada (NAA)**.
 
 > Confira se o banco baixado segue o esquema esperado (tabelas `book` e `verse`,
 > descrito abaixo). Se estiver em outro formato, converta-o antes de rodar o
@@ -117,25 +122,93 @@ Uma tabela `metadata(name, dbversion)` pode existir, mas não é usada.
 
 ## Uso
 
-### 1. Indexar a Bíblia — `preprocessor`
+Fluxo típico:
+
+1. Indexe uma tradução da Bíblia com o `preprocessor`.
+2. Suba o **servidor + interface web** para perguntar pelo navegador (http://localhost:3000/) — essa é a forma recomendada de uso. Mas também é possível fazer consultas diretamente no terminal usando o comando `search-bible`.
+
+### 1. Indexar a Bíblia (`preprocessor`)
 
 Baixe antes um SQLite de tradução (veja
 [Onde conseguir um SQLite da Bíblia](#onde-conseguir-um-sqlite-da-bíblia)) e
-coloque-o em `data/`.
+coloque-o em `data/`. Então execute o comando `preprocessor` para criar os índices que serão utilizados na busca.
 
 ```bash
 npm run preprocessor -- --input ./data/NAA.sqlite --output ./data/preprocessed.sqlite
 ```
 
-| Opção            | Descrição                                               |
+| Argumento        | Descrição                                               |
 | ---------------- | ------------------------------------------------------- |
 | `--input`, `-i`  | SQLite bruto da Bíblia (obrigatório)                    |
 | `--output`, `-o` | SQLite de saída, com as tabelas de índice (obrigatório) |
-| `--help`         | Ajuda                                                   |
 
-As tabelas de saída são recriadas a cada execução (`DROP TABLE IF EXISTS`).
+As tabelas de saída são recriadas a cada execução.
 
-### 2. Perguntar — `search-bible`
+### 2. Servidor + interface web — forma recomendada
+
+Um **servidor Express** e uma **interface React** (Vite) reproduzem no navegador
+a mesma experiência do terminal — expansão da consulta, trechos recuperados e
+resposta final, tudo em _streaming_. É a maneira indicada para o uso do dia a
+dia. Nenhuma lógica de busca é duplicada: o servidor reaproveita os mesmos
+helpers de `src/helpers/` usados pelo `search-bible` (parâmetros, buscas
+FTS/vetorial e fusão RRF).
+
+É necessário executar dois comandos, um para iniciar o servidor que implementa a API que responde as perguntas e outro responsável pela interface gráfica.
+O comando que inicia o servidor da API (comando server) deve receber como argumento o caminho para banco indexado. Mas também pode receber outros parâmetros para configurar a busca (veja
+[Parâmetros do servidor](#parâmetros-do-servidor)).
+
+```bash
+
+npm run server -- --input ./data/preprocessed.sqlite
+```
+
+O comando que inicia o servidor da interface não recebe parâmetro algum.
+
+```bash
+npm run client
+```
+
+Após executar os comandos abra <http://localhost:3000>. Lá será possível ver uma interface gráfica que inclui o status do servidor.
+
+![interface](imagens/interface.png)
+
+#### Parâmetros do servidor
+
+Iguais aos do `search-bible` (menos `--query`, que chega pela interface), mais
+`--port`:
+
+| Opção              | Padrão  | Descrição                               |
+| ------------------ | ------- | --------------------------------------- |
+| `--input`, `-i`    | —       | SQLite indexado (obrigatório)           |
+| `--port`, `-p`     | `3000`  | Porta HTTP (inteiro entre 1 e 65535)    |
+| `--top-k`          | `5`     | Nº de trechos no resultado final        |
+| `--top-k-fts`      | `25`    | Candidatos do FTS                       |
+| `--top-k-vetorial` | `25`    | Candidatos da busca vetorial            |
+| `--peso-fts`       | `0.5`   | Peso da busca lexical na fusão          |
+| `--peso-vetorial`  | `0.5`   | Peso da busca vetorial na fusão         |
+| `--pular-hyde`     | `false` | Não gerar o documento hipotético (HyDE) |
+
+#### Endpoints
+
+- `GET /api/status` — estado (`carregando` / `pronto` / `erro`), nomes dos
+  modelos e parâmetros ativos. O HTTP sobe na hora para responder aqui, mas
+  `/api/search` devolve `503` enquanto os modelos carregam (200 pronto, 503
+  carregando, 500 em erro).
+- `GET /api/search?q=...` — **Server-Sent Events**, emitindo em tempo real: a
+  fase atual (`estado`), os tokens da expansão (`expansao-fragmento`, canais
+  `lexica` / `parafrase` / `hyde`), as consultas consolidadas (`expansao-final`),
+  os trechos recuperados (`trechos`), os tokens da resposta
+  (`resposta-fragmento`) e `fim` / `erro`. O endpoint é sem estado e serializa as
+  buscas (um único LLM local, uma de cada vez, como no terminal).
+
+Na interface: o progresso da expansão aparece token a token, a resposta final
+chega em _streaming_ e cada trecho recuperado abre um modal com o texto do
+capítulo e os scores — inclusive a partir de menções `livro + capítulo` no corpo
+da resposta. As perguntas anteriores ficam no histórico da tela.
+
+### 3. Perguntar pelo terminal — `search-bible`
+
+Alternativa ao navegador, com exatamente a mesma busca:
 
 ```bash
 npm run searchBible -- \
@@ -156,7 +229,7 @@ npm run searchBible -- \
 
 Os pesos devem ser não-negativos e somar mais que zero.
 
-### 3. Inspecionar tamanho dos capítulos — `token-counter`
+### 4. Inspecionar tamanho dos capítulos — `token-counter`
 
 Conta os tokens de cada capítulo e mostra os `N` capítulos com mais tokens. Lê
 sempre `./data/preprocessed.sqlite`.
@@ -202,181 +275,32 @@ Armazena os vetores: `embedding float(1024)`. A busca KNN usa
 similaridade de cosseno (`cosine = 1 - distância² / 2`, válido para embeddings
 normalizados).
 
-### Consultas úteis
-
-```bash
-sqlite3 ./data/preprocessed.sqlite
-```
-
-```sql
--- Total de chunks
-SELECT COUNT(*) FROM tabela_embedding;
-
--- Chunks por livro
-SELECT livro, COUNT(*) FROM tabela_embedding GROUP BY livro;
-
--- Busca lexical
-SELECT livro, numero_capitulo, texto
-FROM tabela_fts
-WHERE tabela_fts MATCH 'perdão OR perdoar';
-```
-
-## Servidor + interface web
-
-Além dos CLIs, o projeto traz um **servidor Express** e uma **interface React**
-que reproduzem no navegador a mesma experiência do terminal — expansão da
-consulta, trechos recuperados e resposta final, tudo em _streaming_.
-
-O servidor vive em `src/server/` e a interface em `client/` (React + Vite).
-Nenhuma lógica de busca é duplicada: o servidor reaproveita os mesmos helpers de
-`src/helpers/` usados pelo `search-bible` (parâmetros, buscas FTS/vetorial e
-fusão RRF).
-
-### Arquitetura
-
-```
-client/                        React + Vite (CSS próprio, modal de trechos)
-src/server/
-  index.ts                     Boot: sobe o HTTP e carrega os modelos antes de aceitar buscas
-  lib/pipeline.ts              Orquestra o mesmo fluxo do main() de searchBible.ts
-  lib/instrumentarModelo.ts    Proxy no LLM para transmitir tokens sem tocar nos helpers
-  lib/eventos.ts               Tipos dos eventos SSE trocados com o cliente
-src/helpers/
-  carregarParametrosBase.ts        Opções e validação de busca compartilhadas (CLI + servidor)
-  carregarParametrosDoServidor.ts  Base + `--port`, sem `--query`
-  search/fundirResultados.ts       Fusão RRF ponderada (usada pelo CLI e pelo servidor)
-```
-
-Antes existiam cópias de `buscarVetorial` e da fusão RRF dentro de `src/server/`
-porque importar `src/searchBible.ts` executaria o seu `main()`. Essa lógica foi
-extraída para `src/helpers/`, então hoje o servidor e o `search-bible`
-compartilham exatamente o mesmo código de parâmetros, busca e fusão.
-
-### O que o servidor faz
-
-- **Express**, com os mesmos parâmetros do `search-bible` **exceto `--query`**
-  (a consulta chega pela interface). `--port`/`-p` escolhe a porta.
-- **Carrega os modelos antes de aceitar buscas.** O HTTP sobe imediatamente para
-  o `/api/status` responder, mas `/api/search` devolve `503` enquanto os modelos
-  não terminam de carregar.
-- `GET /api/status` — estado (`carregando` / `pronto` / `erro`), nomes dos
-  modelos e parâmetros ativos. HTTP 200 pronto, 503 carregando, 500 em erro.
-- `GET /api/search?q=...` — **Server-Sent Events**, emitindo em tempo real:
-  - `estado` — fase atual (`na-fila`, `expandindo-lexica`, `expandindo-parafrase`,
-    `expandindo-hyde`, `buscando`, `fundindo`, `gerando`, `concluido`);
-  - `expansao-fragmento` — tokens da expansão (canal `lexica` / `parafrase` /
-    `hyde`) conforme a rede os gera;
-  - `expansao-final` — as consultas consolidadas;
-  - `trechos` — os trechos recuperados (texto completo e scores);
-  - `resposta-fragmento` — tokens da resposta final;
-  - `fim` / `erro`.
-- O endpoint é **sem estado** e serializa as buscas (um único LLM local),
-  processando uma de cada vez como no terminal.
-
-### O que o cliente faz
-
-- CSS próprio em `client/src/estilos.css`; componentes em `client/src/componentes/`.
-- Mostra o **progresso da consulta** com os tokens de expansão aparecendo ao vivo.
-- Mostra a **resposta final** em _streaming_.
-- Lista os **trechos** recuperados; cada um abre um **modal** com o texto do
-  capítulo e os scores.
-- No texto da resposta, menções a `livro + capítulo` que correspondem a um
-  trecho recuperado viram **links** que abrem esse mesmo modal.
-- Envia uma pergunta por vez e mantém na tela o histórico das anteriores.
-
-### Como rodar
-
-Pré-requisitos: os mesmos do `search-bible` — LM Studio ativo com os modelos de
-`src/helpers/modelos.ts` e um SQLite já indexado pelo `preprocessor`.
-
-#### Desenvolvimento (dois processos)
-
-```bash
-# 1) API (escolha o banco indexado) — roda via tsx, sem build
-npm run server -- --input ./data/preprocessed.sqlite
-
-# 2) Interface (Vite, com proxy /api → :3000)
-npm run client
-```
-
-Abra <http://localhost:5173>.
-
-Atalho para subir os dois juntos (assume `./data/preprocessed.sqlite`):
-
-```bash
-npm run web
-```
-
-Se o servidor estiver em outra porta: `API_PORT=4000 npm run client`.
-
-#### Produção (um processo)
-
-```bash
-npm run client:build        # gera client/dist
-npm run server -- --input ./data/preprocessed.sqlite
-```
-
-Quando `client/dist` existe, o Express serve a interface em
-<http://localhost:3000>. Rode sempre a partir da raiz do projeto (o servidor
-procura `client/dist` a partir do diretório de trabalho).
-
-`npm run build` também compila o servidor para `dist/server/`, caso prefira rodar
-o JavaScript já compilado em vez do `tsx`:
-
-```bash
-npm run build
-node ./dist/server/index.js --input ./data/preprocessed.sqlite
-```
-
-### Parâmetros do servidor
-
-Iguais aos do `search-bible` (menos `--query`), mais `--port`:
-
-| Opção              | Padrão  | Descrição                                |
-| ------------------ | ------- | --------------------------------------- |
-| `--input`, `-i`    | —       | SQLite indexado (obrigatório)           |
-| `--port`, `-p`     | `3000`  | Porta HTTP (inteiro entre 1 e 65535)    |
-| `--top-k`          | `5`     | Nº de trechos no resultado final        |
-| `--top-k-fts`      | `25`    | Candidatos do FTS                       |
-| `--top-k-vetorial` | `25`    | Candidatos da busca vetorial            |
-| `--peso-fts`       | `0.5`   | Peso da busca lexical na fusão          |
-| `--peso-vetorial`  | `0.5`   | Peso da busca vetorial na fusão         |
-| `--pular-hyde`     | `false` | Não gerar o documento hipotético (HyDE) |
-
-`--query` **não** é aceito: a consulta chega pela interface.
-
-## Testes
-
-```bash
-npm test
-```
-
-Roda `npm run build` e depois o Jest (`ts-jest`, config em `jest.config.ts`).
-Os testes cobrem os helpers de parsing de argumentos (do CLI e do servidor),
-divisão em chunks, geração de consulta FTS5, paráfrases, HyDE e as consultas ao
-banco.
-
 ## Estrutura do projeto
 
-```
-src/
-  preprocessor.ts         # CLI: indexa o SQLite bruto
-  searchBible.ts          # CLI: expande a consulta, busca, funde e responde
-  tokenCounter.ts         # CLI: estatística de tokens por capítulo
-  systemPrompts.ts        # prompts do LLM (FTS5, paráfrase, HyDE, resposta final)
-  types.ts                # tipos dos resultados de busca
-  helpers/
-    modelos.ts                        # ids dos modelos LM Studio (fonte única)
-    carregarParametrosBase.ts         # opções/validação de busca compartilhadas (CLI + servidor)
-    carregarParametrosDoComando.ts    # parâmetros do search-bible (base + --query)
-    carregarParametrosDoServidor.ts   # parâmetros do servidor web (base + --port)
-    dividirEmChunks.ts                # chunking com overlap por linha
-    montarChaveResultado.ts           # chave de deduplicação testamento|livro|capítulo|chunk
-    serializarEmbeddingParaBuffer.ts  # embedding number[] → Buffer float32 (sqlite-vec)
-    imprimirCapitulosEncontrados.ts   # impressão dos resultados
-    search/                           # expansão da consulta (FTS5, paráfrase, HyDE), fusão RRF e carga de modelos
-    consultasBanco/                   # buscarFts (BM25) e buscarVetorial (KNN)
-  server/                 # servidor Express + SSE (ver "Servidor + interface web")
-client/                   # interface React + Vite
-data/                     # não versionado: coloque aqui o SQLite da tradução e os bancos indexados
-```
+Na prática, o projeto se resume a alguns comandos `npm run`, todos executados a
+partir da raiz. Os que rodam código compilado chamam `npm run build`
+automaticamente antes.
+
+| Comando                                                | O que faz                                                                          |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `npm run build`                                        | Compila o TypeScript para `dist/` (CLIs e servidor)                                |
+| `npm run preprocessor -- -i <bruto> -o <indexado>`     | Indexa um SQLite bruto da Bíblia                                                   |
+| `npm run server -- -i <indexado>`                      | Só a API Express (SSE); serve `client/dist` se existir                             |
+| `npm run server:watch -- -i <indexado>`                | Igual, recarregando ao salvar                                                      |
+| `npm run client`                                       | Só a interface React (Vite), com proxy `/api` para o servidor                      |
+| `npm run client:build`                                 | Gera `client/dist` para produção                                                   |
+| `npm run searchBible -- -i <indexado> -q "<pergunta>"` | Faz a pergunta pelo terminal                                                       |
+| `npm run tokenCounter -- <N>`                          | Mostra os `N` capítulos com mais tokens. Útil para determinar tamanho dos chuncks. |
+| `npm test`                                             | `npm run build` + Jest                                                             |
+| `npm run style:check` / `npm run style:fix`            | ESLint (verificar / corrigir)                                                      |
+
+Onde cada coisa vive:
+
+| Caminho        | Conteúdo                                                                                                                      |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `src/`         | CLIs (`preprocessor`, `searchBible`, `tokenCounter`), prompts do LLM e tipos                                                  |
+| `src/helpers/` | Código compartilhado: ids dos modelos, parsing de parâmetros, chunking, expansão da consulta, buscas FTS/vetorial e fusão RRF |
+| `src/server/`  | Servidor Express + SSE (reaproveita `src/helpers/`)                                                                           |
+| `client/`      | Interface React + Vite                                                                                                        |
+| `data/`        | Não versionado: SQLite da tradução e os bancos indexados                                                                      |
+| `dist/`        | Saída do `npm run build`                                                                                                      |

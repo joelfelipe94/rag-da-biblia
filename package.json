@@ -21,8 +21,7 @@
     "server": "tsx src/server/index.ts",
     "server:watch": "tsx watch src/server/index.ts",
     "client": "vite --config client/vite.config.ts",
-    "client:build": "vite build --config client/vite.config.ts",
-    "web": "concurrently -k -n servidor,cliente -c blue,green \"tsx src/server/index.ts --input ./data/preprocessed.sqlite\" \"vite --config client/vite.config.ts\""
+    "client:build": "vite build --config client/vite.config.ts"
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
