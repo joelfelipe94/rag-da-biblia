@@ -12,6 +12,7 @@ import { instrumentarModelo } from './instrumentarModelo.js';
 import type { EmissorEvento, TrechoDTO } from './eventos.js';
 import { buscarVetorial } from '../../helpers/consultasBanco/buscarVetorial.js';
 import { fundirResultados } from '../../helpers/search/fundirResultados.js';
+import { OPCOES_SEM_RACIOCINIO } from '../../helpers/modelos.js';
 
 type OpcoesBusca = {
   query: string;
@@ -101,7 +102,7 @@ export async function executarBusca(opcoes: OpcoesBusca): Promise<void> {
     { role: 'system', content: gerarPromptRespostaFinal(capitulosEncontrados) },
     { role: 'user', content: query },
   ]);
-  const predicao = modelo.respond(chat, { preset: 'no-thinking' });
+  const predicao = modelo.respond(chat, OPCOES_SEM_RACIOCINIO);
   for await (const { content } of predicao) {
     if (estaAbortado()) {
       await predicao.cancel().catch(() => undefined);

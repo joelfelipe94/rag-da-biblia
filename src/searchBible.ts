@@ -17,7 +17,11 @@ import { buscarVetorial } from './helpers/consultasBanco/buscarVetorial.js';
 import { imprimirCapitulosEncontrados } from './helpers/imprimirCapitulosEncontrados.js';
 import { renderizarMarkdownNoTerminal } from './helpers/renderizarMarkdownNoTerminal.js';
 import { fundirResultados } from './helpers/search/fundirResultados.js';
-import { MODELO_ALVO, MODELO_EMBEDDING_ALVO } from './helpers/modelos.js';
+import {
+  MODELO_ALVO,
+  MODELO_EMBEDDING_ALVO,
+  OPCOES_SEM_RACIOCINIO,
+} from './helpers/modelos.js';
 
 async function main(argv: string[]): Promise<void> {
   const lmStudioClient = new LMStudioClient();
@@ -105,7 +109,7 @@ async function produzirRespostaComBaseNosDocumentos(
   ]);
 
   console.log('\nGerando resposta com base nos documentos encontrados:');
-  const predicao = modelo.respond(chat, { preset: 'no-thinking' });
+  const predicao = modelo.respond(chat, OPCOES_SEM_RACIOCINIO);
   // Renderiza o Markdown por linha completa: `**` e o bullet `*` só podem ser
   // resolvidos depois que a linha inteira chegou do streaming.
   let bufferLinha = '';

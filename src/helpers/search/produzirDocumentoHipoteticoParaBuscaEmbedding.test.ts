@@ -1,6 +1,7 @@
 import { Chat, type LLM } from '@lmstudio/sdk';
 import { produzirDocumentoHipoteticoParaBuscaEmbedding } from './produzirDocumentoHipoteticoParaBuscaEmbedding.js';
 import { PROMPT_HYDE } from '../../systemPrompts.js';
+import { OPCOES_SEM_RACIOCINIO } from '../modelos.js';
 
 describe('produzirDocumentoHipoteticoParaBuscaEmbedding', () => {
   let mockModelo: LLM;
@@ -23,7 +24,7 @@ describe('produzirDocumentoHipoteticoParaBuscaEmbedding', () => {
     stdoutSpy.mockRestore();
   });
 
-  it('deve chamar o modelo com chat e preset no-thinking', async () => {
+  it('deve chamar o modelo com chat e a config sem raciocínio', async () => {
     const consultaOriginal = 'Quem foi Noé na Bíblia?';
     const mockPredicao = {
       [Symbol.asyncIterator]: async function* () {
@@ -41,9 +42,10 @@ describe('produzirDocumentoHipoteticoParaBuscaEmbedding', () => {
 
     expect(resultado).toBe('Noé foi um homem justo.');
     expect(mockModelo.respond).toHaveBeenCalledTimes(1);
-    expect(mockModelo.respond).toHaveBeenCalledWith(expect.any(Chat), {
-      preset: 'no-thinking',
-    });
+    expect(mockModelo.respond).toHaveBeenCalledWith(
+      expect.any(Chat),
+      OPCOES_SEM_RACIOCINIO,
+    );
     expect(consoleSpy).toHaveBeenCalledWith(
       '\nGerando documento hipotético (HyDE) para busca por embedding:'
     );

@@ -1,5 +1,6 @@
 import { Chat, type LLM } from '@lmstudio/sdk';
 import { produzirParafraseParaBuscaEmbedding } from './produzirParafraseParaBuscaEmbedding.js';
+import { OPCOES_SEM_RACIOCINIO } from '../modelos.js';
 
 describe('produzirParafraseParaBuscaEmbedding', () => {
   let mockModelo: LLM;
@@ -34,7 +35,7 @@ describe('produzirParafraseParaBuscaEmbedding', () => {
 
       expect(resultado).toEqual(parafrases);
       expect(mockModelo.respond).toHaveBeenCalledTimes(1);
-      expect(mockModelo.respond).toHaveBeenCalledWith(expect.any(Chat), { preset: 'no-thinking' });
+      expect(mockModelo.respond).toHaveBeenCalledWith(expect.any(Chat), OPCOES_SEM_RACIOCINIO);
     });
 
     it('deve retornar uma única paráfrase válida', async () => {

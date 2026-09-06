@@ -1,6 +1,7 @@
 import type { LLM, OngoingPrediction } from "@lmstudio/sdk";
 import { Chat } from "@lmstudio/sdk";
 import { PROMPT_PARAFRASE } from "../../systemPrompts.js";
+import { OPCOES_SEM_RACIOCINIO } from "../modelos.js";
 
 /**
  * Produz paráfrases semânticas para busca por embedding a partir da consulta do usuário. Deve ser no máximo 3 linhas, cada linha com uma paráfrase semântica.
@@ -27,7 +28,7 @@ export async function produzirParafraseParaBuscaEmbedding(
     },
   ]);
 
-  const predicao = modelo.respond(chat, { preset: 'no-thinking' });
+  const predicao = modelo.respond(chat, OPCOES_SEM_RACIOCINIO);
   console.log('\nGerando paráfrases semânticas para busca por embedding:');
   let resultado: string[] = [];
   for (let tentativa = 1; tentativa <= 3; tentativa++) {

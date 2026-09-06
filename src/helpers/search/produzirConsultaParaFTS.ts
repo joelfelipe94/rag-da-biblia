@@ -1,6 +1,7 @@
 import { Chat, type LLM } from '@lmstudio/sdk';
 import Database from 'better-sqlite3';
 import { PROMPT_CONSULTA_FTS5 } from '../../systemPrompts.js';
+import { OPCOES_SEM_RACIOCINIO } from '../modelos.js';
 
 /**
  * Produz uma consulta FTS a partir da consulta do usuário.
@@ -30,7 +31,7 @@ export async function produzirConsultaParaFTS(
   console.log('\nGerando consulta FTS a partir da consulta do usuário:');
   const maximoTentativas = 3;
   for (let tentativa = 1; tentativa <= maximoTentativas; tentativa++) {
-    const predicao = modelo.respond(chat, { preset: 'no-thinking' });
+    const predicao = modelo.respond(chat, OPCOES_SEM_RACIOCINIO);
     let tamanhoResultadoParcial = 0;
     for await (const { content } of predicao) {
       process.stdout.write(content);

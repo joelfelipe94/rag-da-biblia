@@ -1,4 +1,5 @@
 import { Chat, type LLM } from '@lmstudio/sdk';
+import { OPCOES_SEM_RACIOCINIO } from '../modelos.js';
 
 const mockPrepare = jest.fn();
 const mockAll = jest.fn();
@@ -65,9 +66,10 @@ describe('produzirConsultaParaFTS', () => {
 
       expect(resultado).toBe(consultaEsperada);
       expect(mockModelo.respond).toHaveBeenCalledTimes(1);
-      expect(mockModelo.respond).toHaveBeenCalledWith(expect.any(Chat), {
-        preset: 'no-thinking',
-      });
+      expect(mockModelo.respond).toHaveBeenCalledWith(
+        expect.any(Chat),
+        OPCOES_SEM_RACIOCINIO,
+      );
     });
 
     it('deve podar a resposta do modelo', async () => {

@@ -1,5 +1,6 @@
 import { type LLM, Chat } from '@lmstudio/sdk';
 import { PROMPT_HYDE } from '../../systemPrompts.js';
+import { OPCOES_SEM_RACIOCINIO } from '../modelos.js';
 
 /**
  * Gera um documento hipotético (HyDE) a partir da consulta original para
@@ -29,7 +30,7 @@ export async function produzirDocumentoHipoteticoParaBuscaEmbedding(
   console.log(
     '\nGerando documento hipotético (HyDE) para busca por embedding:'
   );
-  const predicao = modelo.respond(chat, { preset: 'no-thinking' });
+  const predicao = modelo.respond(chat, OPCOES_SEM_RACIOCINIO);
   for await (const { content } of predicao) {
     process.stdout.write(content);
   }
